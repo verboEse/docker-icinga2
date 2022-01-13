@@ -12,6 +12,16 @@ EOF
 	false
 fi
 
+if ! docker version; then
+	echo 'Docker not found' >&2
+	false
+fi
+
+if ! docker buildx version; then
+	echo '"docker buildx" not found (see https://docs.docker.com/buildx/working-with-buildx/ )' >&2
+	false
+fi
+
 I2SRC="$(realpath "$I2SRC")"
 BLDCTX="$(realpath "$(dirname "$0")")"
 TMPBLDCTX="$(mktemp -d)"
@@ -21,5 +31,14 @@ trap "rm -rf $TMPBLDCTX" EXIT
 cp -a "${BLDCTX}/." "$TMPBLDCTX"
 git clone "file://${I2SRC}/.git" "${TMPBLDCTX}/icinga2-src"
 
-docker build -f "${TMPBLDCTX}/Dockerfile" -t icinga/icinga2 "$TMPBLDCTX"
+if [ "$(uname -m)" = x86_64 ]; then
+	PLATFORMS=( linux/amd64 )
+else
+	PLATFORMS=( linux/arm{64,/v{7,6,5}} )
+fi
+
+for PLATFORM in "${PLATFORMS[@]}"; do
+	docker buildx build --platform "$PLATFORM" --load -f "${TMPBLDCTX}/Dockerfile" -t icinga/icinga2 "$TMPBLDCTX"
+done
+
 docker run --rm icinga/icinga2 icinga2 daemon -C
